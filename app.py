@@ -8,11 +8,11 @@ import base64
 app = Flask(__name__, template_folder='.')
 app.config['SECRET_KEY'] = 'secure_phone_manager_secret_key_2026'
 
-# 200MB buffer size for heavy photos, videos, and screenshots sharing
-socketio = SocketIO(app, cors_allowed_origins="*", max_http_buffer_size=200 * 1024 * 1024)
+socketio = SocketIO(app, cors_allowed_origins="*", max_http_buffer_size=300 * 1024 * 1024)
 
-# Connected devices list
-connected_devices = {}
+# Storage for connected nodes
+phone_sid = None
+web_clients = {}
 
 @app.route('/')
 def home():
@@ -20,7 +20,7 @@ def home():
 
 @app.route('/get_qr')
 def get_qr():
-    url = "https://phone-file-manager.onrender.com"  # अपनी Render URL यहाँ डालें
+    url = "https://phone-file-manager.onrender.com"  # अपनी Render URL यहाँ कन्फर्म रखें
     img = qrcode.make(url)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -33,21 +33,32 @@ def handle_connect():
 
 @socketio.on('register_device')
 def handle_register(data):
-    device_name = data.get('device_name', 'Android Phone')
-    connected_devices[request.sid] = device_name
-    print(f"[Server] Mobile device registered: {device_name} ({request.sid})")
-    emit('status_update', {'status': 'connected', 'devices': list(connected_devices.values())}, broadcast=True)
+    global phone_sid
+    phone_sid = request.sid
+    device_name = data.get('device_name', 'Android Master Phone')
+    print(f"[Server] Master Phone Registered Successfully! SID: {phone_sid}")
+    emit('status_update', {'status': 'connected', 'device': device_name}, broadcast=True)
+
+@socketio.on('request_permission')
+def handle_permission_req(data):
+    # Friend requests permission to access/share data
+    if phone_sid:
+        emit('incoming_permission_request', {'requester_sid': request.sid, 'requester_name': data.get('name', 'Friend')}, room=phone_sid)
+    else:
+        emit('permission_response', {'status': 'rejected', 'msg': 'Master phone offline'}, room=request.sid)
+
+@socketio.on('grant_permission')
+def handle_grant_permission(data):
+    requester_sid = data.get('requester_sid')
+    status = data.get('status') # 'approved' or 'denied'
+    emit('permission_response', {'status': status}, room=requester_sid)
+    if status == 'approved':
+        print(f"[Server] Permission granted to client: {requester_sid}")
 
 @socketio.on('fetch_file_list')
 def handle_fetch(data):
-    target_sid = data.get('target_sid')
-    if target_sid:
-        emit('fetch_file_list', data, room=target_sid)
-    else:
-        # Agar koi specific target nahi hai, toh pehle registered phone ko bhejo
-        for sid, name in connected_devices.items():
-            emit('fetch_file_list', data, room=sid)
-            break
+    if phone_sid:
+        emit('fetch_file_list', data, room=phone_sid)
 
 @socketio.on('response_file_list')
 def handle_response_files(data):
@@ -55,9 +66,8 @@ def handle_response_files(data):
 
 @socketio.on('download_file')
 def handle_download(data):
-    target_sid = data.get('target_sid')
-    if target_sid:
-        emit('download_file', data, room=target_sid)
+    if phone_sid:
+        emit('download_file', data, room=phone_sid)
 
 @socketio.on('response_download')
 def handle_response_download(data):
@@ -65,15 +75,13 @@ def handle_response_download(data):
 
 @socketio.on('execute_delete')
 def handle_delete(data):
-    target_sid = data.get('target_sid')
-    if target_sid:
-        emit('execute_delete', data, room=target_sid)
+    if phone_sid:
+        emit('execute_delete', data, room=phone_sid)
 
 @socketio.on('upload_file_chunk')
 def handle_upload_chunk(data):
-    target_sid = data.get('target_sid')
-    if target_sid:
-        emit('upload_file_chunk', data, room=target_sid)
+    if phone_sid:
+        emit('upload_file_chunk', data, room=phone_sid)
 
 @socketio.on('response_upload')
 def handle_response_upload(data):
@@ -81,14 +89,14 @@ def handle_response_upload(data):
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    if request.sid in connected_devices:
-        del connected_devices[request.sid]
-        print(f"[Server] Mobile device disconnected: {request.sid}")
-        emit('status_update', {'status': 'disconnected', 'devices': list(connected_devices.values())}, broadcast=True)
+    global phone_sid
+    if request.sid == phone_sid:
+        phone_sid = None
+        print("[Server] Master Phone Disconnected!")
+        emit('status_update', {'status': 'disconnected', 'device': 'None'}, broadcast=True)
     else:
-        print(f"[Server] Web client disconnected: {request.sid}")
+        print(f"[Server] Web/Friend client disconnected: {request.sid}")
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     socketio.run(app, host='0.0.0.0', port=port)
-        
