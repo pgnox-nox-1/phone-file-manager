@@ -1,8 +1,10 @@
 from flask import Flask, request, send_from_directory
 from flask_socketio import SocketIO, emit
 import os
+import qrcode
+import io
+import base64
 
-# root directory से ही index.html पढ़ने के लिए template_folder='.' सेट किया है
 app = Flask(__name__, template_folder='.')
 app.config['SECRET_KEY'] = 'my_secret_key'
 
@@ -12,8 +14,16 @@ phone_sid = None
 
 @app.route('/')
 def home():
-    # सीधे root directory से index.html सर्व करेगा
     return send_from_directory('.', 'index.html')
+
+@app.route('/get_qr')
+def get_qr():
+    url = "https://phone-file-manager.onrender.com"
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    encoded_img = base64.b64encode(buf.getvalue()).decode('utf-8')
+    return {'qr_code': encoded_img, 'url': url}
 
 @socketio.on('connect')
 def handle_connect():
