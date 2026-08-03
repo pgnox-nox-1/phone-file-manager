@@ -1,52 +1,57 @@
-import socketio
 import os
-sio = socketio.Client()
+import base64
+import socketio
 
-# Render deployed URL
-SERVER_URL = 'https://phone-file-manager-1.onrender.com'
+sio = socketio.Client()
 
 @sio.event
 def connect():
-    print("Successfully connected to the server!")
+    print("Connected to server!")
     sio.emit('register_device')
 
 @sio.on('fetch_file_list')
-def send_file_list(data):
-    req_path = data.get('path', '/sdcard')
-    files_data = []
+def on_fetch_files(data):
+    path = data.get('path', '/sdcard')
     try:
-        for item in os.listdir(req_path):
-            full_path = os.path.join(req_path, item)
-            is_dir = os.path.isdir(full_path)
-            size = os.path.getsize(full_path) if not is_dir else 0
-            files_data.append({
+        files = []
+        for item in os.listdir(path):
+            item_path = os.path.join(path, item)
+            is_dir = os.path.isdir(item_path)
+            files.append({
                 'name': item,
-                'path': full_path,
-                'is_dir': is_dir,
-                'size': f"{round(size / (1024*1024), 2)} MB" if not is_dir else "-"
+                'path': item_path,
+                'is_dir': is_dir
             })
+        sio.emit('response_file_list', {'current_path': path, 'files': files})
     except Exception as e:
-        print("Read Error:", e)
-    
-    sio.emit('response_file_list', {'files': files_data})
+        print("Error reading path:", e)
+
+@sio.on('download_file')
+def on_download(data):
+    path = data.get('path')
+    try:
+        with open(path, 'rb') as f:
+            encoded_data = base64.b64encode(f.read()).decode('utf-8')
+            filename = os.path.basename(path)
+            sio.emit('response_download', {'file_data': encoded_data, 'filename': filename})
+    except Exception as e:
+        print("Error downloading file:", e)
 
 @sio.on('execute_delete')
-def handle_delete(data):
-    file_path = data.get('path')
+def on_delete(data):
+    path = data.get('path')
     try:
-        if os.path.isfile(file_path):
-            os.remove(file_path)
-            print(f"Deleted File: {file_path}")
-        elif os.path.isdir(file_path):
-            os.rmdir(file_path)
-            print(f"Deleted Directory: {file_path}")
-        send_file_list({'path': '/sdcard'})
+        if os.path.isdir(path):
+            os.rmdir(path)
+        else:
+            os.remove(path)
+        # Refresh current folder after delete
+        parent_dir = os.path.dirname(path)
+        on_fetch_files({'path': parent_dir})
     except Exception as e:
-        print("Delete Error:", e)
+        print("Error deleting:", e)
 
-try:
-    sio.connect(SERVER_URL)
+if __name__ == '__main__':
+    sio.connect('https://phone-file-manager.onrender.com')
     sio.wait()
-except Exception as e:
-    print("Connection Error:", e)
             
