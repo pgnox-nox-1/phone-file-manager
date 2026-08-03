@@ -1,18 +1,19 @@
-from flask import Flask, render_template, request
+from flask import Flask, request, send_from_directory
 from flask_socketio import SocketIO, emit
 import os
 
-app = Flask(__name__)
+# root directory से ही index.html पढ़ने के लिए template_folder='.' सेट किया है
+app = Flask(__name__, template_folder='.')
 app.config['SECRET_KEY'] = 'my_secret_key'
 
-# CORS policy allow for connection
 socketio = SocketIO(app, cors_allowed_origins="*", max_http_buffer_size=100 * 1024 * 1024)
 
 phone_sid = None
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    # सीधे root directory से index.html सर्व करेगा
+    return send_from_directory('.', 'index.html')
 
 @socketio.on('connect')
 def handle_connect():
@@ -58,3 +59,4 @@ def handle_disconnect():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     socketio.run(app, host='0.0.0.0', port=port)
+    
