@@ -1,16 +1,27 @@
 import os
-import time
-import requests
 import shutil
 import base64
+import socketio
 
+sio = socketio.Client()
 SERVER_URL = 'https://phone-file-manager.onrender.com'  # अपनी Render URL यहाँ डालें
-current_path = '/sdcard'
 
-def get_dir_contents(path):
+@sio.event
+def connect():
+    print("Connected to Cloud Server! Registering phone...")
+    sio.emit('register_phone', {})
+
+@sio.event
+def disconnect():
+    print("Disconnected from server. Reconnecting...")
+
+@sio.on('get_file_list')
+def on_get_file_list(data):
+    path = data.get('path', '/sdcard')
     files_data = []
-    if not path or not os.path.exists(path):
+    if not os.path.exists(path):
         path = '/sdcard'
+    
     try:
         for item in os.listdir(path):
             if item.startswith('.'):
@@ -30,44 +41,62 @@ def get_dir_contents(path):
                 'size': file_size
             })
     except Exception as e:
-        print(f"Error reading path {path}: {e}")
-    return files_data, path
+        print(f"Error reading path: {e}")
 
-print("=== PYDROID 3 SMART SYNC CLIENT STARTED ===")
-print("Syncing with Cloud Server. Keep this app open in background...")
+    sio.emit('forward_file_list', {
+        "current_path": path,
+        "files": files_data
+    })
 
-while True:
+@sio.on('do_delete')
+def on_do_delete(data):
+    target_path = data.get('path')
     try:
-        files, current_path = get_dir_contents(current_path)
-        payload = {
-            "current_path": current_path,
-            "files": files
-        }
-        
-        response = requests.post(f"{SERVER_URL}/api/phone_sync", json=payload, timeout=10)
-        if response.status_code == 200:
-            res_data = response.json()
-            cmd = res_data.get("pending_cmd")
-            if cmd:
-                action = cmd.get("action")
-                target_path = cmd.get("path")
-                if action == "delete":
-                    if os.path.isfile(target_path):
-                        os.remove(target_path)
-                    elif os.path.isdir(target_path):
-                        shutil.rmtree(target_path)
-                    print(f"Executed delete on: {target_path}")
-                elif action == "upload":
-                    folder = cmd.get("path")
-                    fname = cmd.get("filename")
-                    b64_data = cmd.get("file_data")
-                    save_path = os.path.join(folder, fname)
-                    with open(save_path, "wb") as f:
-                        f.write(base64.b64decode(b64_data))
-                    print(f"Saved uploaded file to: {save_path}")
-        print(".", end="", flush=True)
+        if os.path.isfile(target_path):
+            os.remove(target_path)
+        elif os.path.isdir(target_path):
+            shutil.rmtree(target_path)
+        print(f"Deleted: {target_path}")
     except Exception as e:
-        print(f"\n[Sync Retry] Waiting for connection... ({e})")
+        print(f"Delete failed: {e}")
+    sio.emit('request_file_list', {"path": os.path.dirname(target_path)})
+
+@sio.on('do_download')
+def on_do_download(data):
+    target_path = data.get('path')
+    try:
+        with open(target_path, 'rb') as f:
+            b64_data = base64.b64encode(f.read()).decode('utf-8')
+        sio.emit('forward_download', {
+            "filename": os.path.basename(target_path),
+            "file_data": b64_data
+        })
+        print(f"Downloaded and sent: {target_path}")
+    except Exception as e:
+        print(f"Download failed: {e}")
+
+@sio.on('do_upload')
+def on_do_upload(data):
+    folder = data.get('path')
+    filename = data.get('filename')
+    b64_data = data.get('file_data')
+    save_path = os.path.join(folder, filename)
+    try:
+        with open(save_path, 'wb') as f:
+            f.write(base64.b64decode(b64_data))
+        sio.emit('forward_upload', {"status": "success"})
+        print(f"Uploaded file saved to: {save_path}")
+    except Exception as e:
+        print(f"Upload failed: {e}")
+
+if __name__ == '__main__':
+    print("=== PYDROID 3 LIVE SOCKET CLIENT STARTED ===")
+    while True:
+        try:
+            sio.connect(SERVER_URL)
+            sio.wait()
+        except Exception as e:
+            print(f"Connection error: {e}, retrying in 3 seconds...")
+            import time
+            time.sleep(3)
     
-    time.sleep(3)
-                    
