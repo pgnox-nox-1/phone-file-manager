@@ -7,7 +7,7 @@ import threading
 
 sio = socketio.Client()
 SERVER_URL = 'https://phone-file-manager.onrender.com'  # अपनी Render URL यहाँ डालें
-DEVICE_NAME = "My Android Phone"  # आप नाम बदल सकते हैं जैसे "Friend Phone"
+DEVICE_NAME = "Manish Master Phone"
 
 def get_dir_contents(req_path):
     files_data = []
@@ -39,10 +39,21 @@ def get_dir_contents(req_path):
 
 @sio.event
 def connect():
-    print("[Client] Connected to the Render server successfully!")
+    print("[Client] Connected to Render Server as Master Device!")
     sio.emit('register_device', {'device_name': DEVICE_NAME})
     files_data, current_path = get_dir_contents('/sdcard')
-    sio.emit('response_file_list', {'files': files_data, 'current_path': current_path, 'sid': sio.get_sid() if hasattr(sio, 'get_sid') else ''})
+    sio.emit('response_file_list', {'files': files_data, 'current_path': current_path})
+
+@sio.on('incoming_permission_request')
+def handle_perm_request(data):
+    req_name = data.get('requester_name', 'Friend')
+    req_sid = data.get('requester_sid')
+    print(f"\n[Security Alert] '{req_name}' is requesting access to your phone storage!")
+    choice = input("Do you want to GRANT access? (y/n): ").strip().lower()
+    
+    status = 'approved' if choice == 'y' else 'denied'
+    sio.emit('grant_permission', {'requester_sid': req_sid, 'status': status})
+    print(f"[Client] Permission {status} for {req_name}.")
 
 @sio.on('fetch_file_list')
 def send_file_list(data):
@@ -61,7 +72,7 @@ def handle_download(data):
                 'filename': os.path.basename(file_path),
                 'file_data': encoded
             })
-            print(f"[Client] Sent file for download: {file_path}")
+            print(f"[Client] Shared file: {file_path}")
     except Exception as e:
         print(f"[Client Error] Download Error: {e}")
 
@@ -94,7 +105,7 @@ def handle_upload(data):
     try:
         with open(full_save_path, 'wb') as f:
             f.write(file_bytes)
-        print(f"[Client] File received and saved: {full_save_path}")
+        print(f"[Client] Received file/photo from peer: {full_save_path}")
     except Exception as e:
         print(f"[Client Error] Save Error: {e}")
         
@@ -109,16 +120,16 @@ def background_worker():
             sio.wait()
             break
         except Exception as e:
-            print(f"[Client] Disconnected ({e}), reconnecting in 10s...")
+            print(f"[Client] Connection dropped ({e}), retrying in 10s...")
             time.sleep(10)
 
 if __name__ == '__main__':
-    print("=== PUDROID 3 FILE SHARING CLIENT ===")
-    input("Press Enter to start background connection: ")
+    print("=== PYDROID 3 SECURE MASTER NODE ===")
+    input("Press Enter to start background service: ")
     t = threading.Thread(target=background_worker)
     t.daemon = True
     t.start()
     
     while True:
         time.sleep(1)
-            
+    
