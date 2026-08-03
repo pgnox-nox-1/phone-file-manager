@@ -8,7 +8,6 @@ import base64
 app = Flask(__name__, template_folder='.')
 app.config['SECRET_KEY'] = 'secure_phone_manager_secret_key_2026'
 
-# Large buffer size (200MB) for seamless media and file transfers
 socketio = SocketIO(app, cors_allowed_origins="*", max_http_buffer_size=200 * 1024 * 1024)
 
 phone_sid = None
@@ -19,8 +18,7 @@ def home():
 
 @app.route('/get_qr')
 def get_qr():
-    # Update with your actual Render service URL
-    url = "https://phone-file-manager.onrender.com"
+    url = "https://phone-file-manager.onrender.com"  # अपनी Render URL यहाँ डालें
     img = qrcode.make(url)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -77,8 +75,6 @@ def handle_disconnect():
         phone_sid = None
         print("[Server] Mobile device disconnected.")
         emit('status_update', {'status': 'disconnected'}, broadcast=True)
-    else:
-        print(f"[Server] Web client disconnected: {request.sid}")
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
