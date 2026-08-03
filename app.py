@@ -6,13 +6,12 @@ import io
 import base64
 
 app = Flask(__name__, template_folder='.')
-app.config['SECRET_KEY'] = 'secure_phone_manager_secret_key_2026'
+app.config['SECRET_KEY'] = 'manish_ultimate_secure_hub_2026'
 
-socketio = SocketIO(app, cors_allowed_origins="*", max_http_buffer_size=300 * 1024 * 1024)
+# Optimized for stable streaming and data sync
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', max_http_buffer_size=500 * 1024 * 1024)
 
-# Storage for connected nodes
 phone_sid = None
-web_clients = {}
 
 @app.route('/')
 def home():
@@ -29,42 +28,32 @@ def get_qr():
 
 @socketio.on('connect')
 def handle_connect():
-    print(f'[Server] Client connected: {request.sid}')
+    print(f'[Server] Connected client SID: {request.sid}')
 
-@socketio.on('register_device')
+@socketio.on('register_master')
 def handle_register(data):
     global phone_sid
     phone_sid = request.sid
-    device_name = data.get('device_name', 'Android Master Phone')
-    print(f"[Server] Master Phone Registered Successfully! SID: {phone_sid}")
-    emit('status_update', {'status': 'connected', 'device': device_name}, broadcast=True)
+    print(f"[Server SUCCESS] Master Phone Registered! SID: {phone_sid}")
+    emit('status_update', {'status': 'online', 'device': data.get('device_name', 'Master Phone')}, broadcast=True)
 
-@socketio.on('request_permission')
-def handle_permission_req(data):
-    # Friend requests permission to access/share data
+@socketio.on('ping_master')
+def handle_ping():
     if phone_sid:
-        emit('incoming_permission_request', {'requester_sid': request.sid, 'requester_name': data.get('name', 'Friend')}, room=phone_sid)
-    else:
-        emit('permission_response', {'status': 'rejected', 'msg': 'Master phone offline'}, room=request.sid)
+        emit('pong_master', room=phone_sid)
 
-@socketio.on('grant_permission')
-def handle_grant_permission(data):
-    requester_sid = data.get('requester_sid')
-    status = data.get('status') # 'approved' or 'denied'
-    emit('permission_response', {'status': status}, room=requester_sid)
-    if status == 'approved':
-        print(f"[Server] Permission granted to client: {requester_sid}")
-
-@socketio.on('fetch_file_list')
+@socketio.on('request_file_list')
 def handle_fetch(data):
     if phone_sid:
         emit('fetch_file_list', data, room=phone_sid)
+    else:
+        emit('response_file_list', {'error': 'Master phone is offline. Please check Pydroid 3 script.'}, room=request.sid)
 
 @socketio.on('response_file_list')
 def handle_response_files(data):
     emit('response_file_list', data, broadcast=True)
 
-@socketio.on('download_file')
+@socketio.on('request_download')
 def handle_download(data):
     if phone_sid:
         emit('download_file', data, room=phone_sid)
@@ -73,13 +62,13 @@ def handle_download(data):
 def handle_response_download(data):
     emit('response_download', data, broadcast=True)
 
-@socketio.on('execute_delete')
+@socketio.on('request_delete')
 def handle_delete(data):
     if phone_sid:
         emit('execute_delete', data, room=phone_sid)
 
-@socketio.on('upload_file_chunk')
-def handle_upload_chunk(data):
+@socketio.on('request_upload')
+def handle_upload(data):
     if phone_sid:
         emit('upload_file_chunk', data, room=phone_sid)
 
@@ -92,11 +81,12 @@ def handle_disconnect():
     global phone_sid
     if request.sid == phone_sid:
         phone_sid = None
-        print("[Server] Master Phone Disconnected!")
-        emit('status_update', {'status': 'disconnected', 'device': 'None'}, broadcast=True)
+        print("[Server WARNING] Master Phone Disconnected!")
+        emit('status_update', {'status': 'offline', 'device': 'None'}, broadcast=True)
     else:
-        print(f"[Server] Web/Friend client disconnected: {request.sid}")
+        print(f"[Server] Web client disconnected: {request.sid}")
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     socketio.run(app, host='0.0.0.0', port=port)
+    
