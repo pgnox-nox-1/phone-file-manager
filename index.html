@@ -3,46 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phone Remote Control Panel</title>
+    <title>Phone Data Manager</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b132b; color: #ffffff; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: auto; background: #1c2541; padding: 25px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
-        h2 { margin-top: 0; color: #4ea8de; }
-        .status-box { padding: 10px 15px; border-radius: 6px; font-weight: bold; display: inline-block; margin-bottom: 15px; }
-        .connected { background: #10b981; color: #fff; }
-        .disconnected { background: #f59e0b; color: #fff; }
-        .path-bar { background: #3a506b; padding: 10px; border-radius: 6px; font-weight: 500; margin-bottom: 15px; word-break: break-all; }
+        body { font-family: sans-serif; background: #111827; color: white; margin: 0; padding: 15px; }
+        .box { background: #1f2937; padding: 20px; border-radius: 8px; max-width: 800px; margin: auto; }
+        .status { padding: 6px 12px; border-radius: 4px; font-weight: bold; display: inline-block; }
+        .on { background: #10b981; }
+        .off { background: #ef4444; }
+        .path { background: #374151; padding: 8px; border-radius: 4px; margin: 15px 0; word-break: break-all; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #3a506b; }
-        th { background: #0b132b; color: #4ea8de; }
-        tr:hover { background: #2a3a5e; }
-        .item-name { cursor: pointer; color: #64dfdf; text-decoration: none; font-weight: 600; }
-        .item-name:hover { text-decoration: underline; }
-        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 5px; }
-        .btn-del { background: #e63946; color: white; }
-        .btn-down { background: #48cae4; color: #000; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #374151; }
+        .folder { color: #38bdf8; cursor: pointer; font-weight: bold; }
+        .btn-del { background: #dc2626; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+        .btn-down { background: #2563eb; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-right: 5px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>📱 Phone Remote Control Panel</h2>
-        <div>
-            Status: <span id="status" class="status-box disconnected">Waiting for Phone...</span>
-        </div>
-        <div class="path-bar">📂 Current Path: <span id="current-path">/sdcard</span></div>
+    <div class="box">
+        <h2>📱 Live Remote Phone Manager</h2>
+        <p>Status: <span id="status" class="status off">Waiting for Phone...</span></p>
+        <div class="path">Location: <b id="current-path">/sdcard</b></div>
 
         <table>
             <thead>
                 <tr>
                     <th>Name</th>
                     <th>Type</th>
-                    <th>Size</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="file-list">
-                <tr><td colspan="4">Connecting to device...</td></tr>
+                <tr><td colspan="3">Waiting for mobile script to run...</td></tr>
             </tbody>
         </table>
     </div>
@@ -54,11 +46,11 @@
         socket.on('status_update', (data) => {
             const statusEl = document.getElementById('status');
             if (data.status === 'connected') {
-                statusEl.className = 'status-box connected';
-                statusEl.innerText = 'Mobile Connected Live!';
+                statusEl.className = 'status on';
+                statusEl.innerText = 'Mobile Connected!';
                 socket.emit('fetch_file_list', { path: currentPath });
             } else {
-                statusEl.className = 'status-box disconnected';
+                statusEl.className = 'status off';
                 statusEl.innerText = 'Waiting for Phone...';
             }
         });
@@ -74,14 +66,11 @@
 
             if (currentPath !== '/sdcard' && currentPath !== '/') {
                 const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/sdcard';
-                tbody.innerHTML += `
-                    <tr>
-                        <td colspan="4" class="item-name" onclick="openFolder('${parentPath}')">⬅️ .. (Go Back)</td>
-                    </tr>`;
+                tbody.innerHTML += `<tr><td colspan="3" class="folder" onclick="openFolder('${parentPath}')">⬅️ .. (Go Back)</td></tr>`;
             }
 
             if (!data.files || data.files.length === 0) {
-                tbody.innerHTML += '<tr><td colspan="4">Empty Folder</td></tr>';
+                tbody.innerHTML += '<tr><td colspan="3">Folder is empty</td></tr>';
                 return;
             }
 
@@ -90,19 +79,17 @@
                 const cleanPath = file.path.replace(/\\/g, '/');
                 if (file.is_dir) {
                     tr.innerHTML = `
-                        <td class="item-name" onclick="openFolder('${cleanPath}')">📁 ${file.name}</td>
+                        <td class="folder" onclick="openFolder('${cleanPath}')">📁 ${file.name}</td>
                         <td>Folder</td>
-                        <td>-</td>
-                        <td><button class="btn btn-del" onclick="deleteItem('${cleanPath}')">Delete</button></td>
+                        <td><button class="btn-del" onclick="deleteItem('${cleanPath}')">Delete</button></td>
                     `;
                 } else {
                     tr.innerHTML = `
                         <td>📄 ${file.name}</td>
                         <td>File</td>
-                        <td>${file.size}</td>
                         <td>
-                            <button class="btn btn-down" onclick="downloadFile('${cleanPath}')">Download</button>
-                            <button class="btn btn-del" onclick="deleteItem('${cleanPath}')">Delete</button>
+                            <button class="btn-down" onclick="downloadFile('${cleanPath}')">Download</button>
+                            <button class="btn-del" onclick="deleteItem('${cleanPath}')">Delete</button>
                         </td>
                     `;
                 }
@@ -119,20 +106,9 @@
             document.body.removeChild(link);
         });
 
-        function openFolder(path) {
-            socket.emit('fetch_file_list', { path: path });
-        }
-
-        function deleteItem(path) {
-            if (confirm('Are you sure you want to delete this?')) {
-                socket.emit('execute_delete', { path: path });
-            }
-        }
-
-        function downloadFile(path) {
-            socket.emit('download_file', { path: path });
-        }
+        function openFolder(path) { socket.emit('fetch_file_list', { path: path }); }
+        function deleteItem(path) { if(confirm('Delete this item?')) socket.emit('execute_delete', { path: path }); }
+        function downloadFile(path) { socket.emit('download_file', { path: path }); }
     </script>
 </body>
-    </html>
-    
+</html>
