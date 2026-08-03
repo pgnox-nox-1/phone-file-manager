@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Cross-Device File Sharing Hub</title>
+    <title>Secure Peer-to-Peer Data & File Hub</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
@@ -17,7 +17,7 @@
         .path { font-family: monospace; color: #cbd5e1; word-break: break-all; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #334155; }
-        th { background: #334155; color: #e2e8f0; font-size: 0.9rem; }
+        th { background: #334155; color: e2e8f0; font-size: 0.9rem; }
         .folder { color: #38bdf8; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
         .folder:hover { text-decoration: underline; }
         .file-item { display: flex; align-items: center; gap: 8px; color: #e2e8f0; }
@@ -29,32 +29,34 @@
         .upload-section { background: #0f172a; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px dashed #475569; }
         .qr-container { text-align: center; margin-top: 20px; background: #0f172a; padding: 15px; border-radius: 8px; }
         .qr-container img { width: 130px; height: 130px; border-radius: 6px; background: white; padding: 5px; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; justify-content: center; align-items: center; }
+        .modal { background: #334155; padding: 25px; border-radius: 10px; text-align: center; width: 350px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>🔄 P2P Cross-Device Data & File Sharing Hub</h2>
+        <h2>🔒 Secure P2P Data & File Transfer Hub</h2>
         
         <div class="status-box">
-            <div>Connection Status: <span id="status" class="status off">Waiting for Phone...</span></div>
-            <div id="device-info" style="font-size: 0.9rem; color: #38bdf8;">Connected Device: None</div>
+            <div>Master Phone Status: <span id="status" class="status off">Offline</span></div>
+            <button class="btn btn-upload" id="connect-btn" onclick="requestAccess()">Request Access / Connect</button>
         </div>
         
         <div class="qr-container">
-            <p style="margin: 5px 0 10px 0; font-size: 0.9rem; color: #94a3b8;">Share this link or scan QR with your friend to exchange photos, data & screenshots:</p>
+            <p style="margin: 5px 0 10px 0; font-size: 0.9rem; color: #94a3b8;">Scan QR Code to give secure access or exchange data:</p>
             <img id="qr-img" src="" alt="QR Code">
             <div><a id="site-url" href="#" target="_blank" style="color: #38bdf8; font-size: 0.85rem; word-break: break-all;"></a></div>
         </div>
 
         <div class="toolbar">
-            <div class="path">Current Directory: <b id="current-path">/sdcard</b></div>
+            <div class="path">Current Path: <b id="current-path">/sdcard</b></div>
         </div>
 
         <div class="upload-section">
-            <h4 style="margin: 0 0 10px 0; color: #e2e8f0;">📤 Send / Upload Data to Phone (Photos, Videos, Screenshots, etc.)</h4>
+            <h4 style="margin: 0 0 10px 0; color: #e2e8f0;">📤 Send Photos, Screenshots & Data to Phone</h4>
             <input type="file" id="file-input" multiple style="color: #cbd5e1; margin-bottom: 10px;">
             <br>
-            <button class="btn btn-upload" onclick="uploadFilesToPhone()">Send to Phone</button>
+            <button class="btn btn-upload" onclick="uploadFiles()">Upload to Phone</button>
         </div>
 
         <table>
@@ -67,15 +69,22 @@
                 </tr>
             </thead>
             <tbody id="file-list">
-                <tr><td colspan="4" style="text-align: center; color: #94a3b8;">Waiting for mobile script to connect...</td></tr>
+                <tr><td colspan="4" style="text-align: center; color: #94a3b8;">Click 'Request Access' above after phone is online.</td></tr>
             </tbody>
         </table>
+    </div>
+
+    <div id="modal-overlay" class="overlay">
+        <div class="modal">
+            <h3 id="modal-text" style="color: #38bdf8; margin-top:0;">Waiting for Master Phone Permission...</h3>
+            <p id="modal-sub" style="font-size: 0.9rem; color: #cbd5e1;">Please look at your Pydroid 3 console and press 'y' to approve access.</p>
+        </div>
     </div>
 
     <script>
         const socket = io();
         let currentPath = '/sdcard';
-        let targetSocketId = null;
+        let isAuthorized = false;
 
         fetch('/get_qr')
             .then(res => res.json())
@@ -88,26 +97,45 @@
 
         socket.on('status_update', (data) => {
             const statusEl = document.getElementById('status');
-            const infoEl = document.getElementById('device-info');
-            if (data.status === 'connected' && data.devices.length > 0) {
+            if (data.status === 'connected') {
                 statusEl.className = 'status on';
-                statusEl.innerText = 'Connected & Ready!';
-                infoEl.innerText = 'Active Devices: ' + data.devices.join(', ');
-                socket.emit('fetch_file_list', { path: currentPath });
+                statusEl.innerText = 'Online & Ready';
             } else {
                 statusEl.className = 'status off';
-                statusEl.innerText = 'Waiting for Phone...';
-                infoEl.innerText = 'Connected Device: None';
+                statusEl.innerText = 'Offline';
+                isAuthorized = false;
+            }
+        });
+
+        function requestAccess() {
+            const name = prompt("Enter your name or device tag:", "Friend");
+            if(!name) return;
+            
+            document.getElementById('modal-overlay').style.display = 'flex';
+            document.getElementById('modal-text').innerText = "Waiting for Master Phone Permission...";
+            document.getElementById('modal-sub').innerText = "Check your Pydroid 3 screen and press 'y' to approve.";
+            
+            socket.emit('request_permission', { name: name });
+        }
+
+        socket.on('permission_response', (data) => {
+            const overlay = document.getElementById('modal-overlay');
+            if (data.status === 'approved') {
+                isAuthorized = true;
+                overlay.style.display = 'none';
+                alert('Access Granted by Master Phone!');
+                socket.emit('fetch_file_list', { path: currentPath });
+            } else {
+                overlay.style.display = 'none';
+                alert('Access Denied or Phone Offline!');
             }
         });
 
         socket.on('response_file_list', (data) => {
+            if(!isAuthorized) return;
             if(data.current_path) {
                 currentPath = data.current_path;
                 document.getElementById('current-path').innerText = currentPath;
-            }
-            if(data.sid) {
-                targetSocketId = data.sid;
             }
 
             const tbody = document.getElementById('file-list');
@@ -151,6 +179,7 @@
         });
 
         socket.on('response_download', (data) => {
+            if(!isAuthorized) return;
             const link = document.createElement('a');
             link.href = 'data:application/octet-stream;base64,' + data.file_data;
             link.download = data.filename;
@@ -160,25 +189,30 @@
         });
 
         socket.on('response_upload', (data) => {
-            alert('File successfully transferred to phone!');
-            socket.emit('fetch_file_list', { path: data.current_path, target_sid: targetSocketId });
+            if(!isAuthorized) return;
+            alert('File successfully transferred!');
+            socket.emit('fetch_file_list', { path: data.current_path });
         });
 
         function openFolder(path) {
-            socket.emit('fetch_file_list', { path: path, target_sid: targetSocketId });
+            if(!isAuthorized) { alert('Access not granted!'); return; }
+            socket.emit('fetch_file_list', { path: path });
         }
 
         function deleteItem(path) {
+            if(!isAuthorized) { alert('Access not granted!'); return; }
             if(confirm('Are you sure you want to delete this file?')) {
-                socket.emit('execute_delete', { path: path, target_sid: targetSocketId });
+                socket.emit('execute_delete', { path: path });
             }
         }
 
         function downloadFile(path) {
-            socket.emit('download_file', { path: path, target_sid: targetSocketId });
+            if(!isAuthorized) { alert('Access not granted!'); return; }
+            socket.emit('download_file', { path: path });
         }
 
-        function uploadFilesToPhone() {
+        function uploadFiles() {
+            if(!isAuthorized) { alert('Please request and get access permission first!'); return; }
             const fileInput = document.getElementById('file-input');
             if (fileInput.files.length === 0) {
                 alert('Please select files first!');
@@ -194,8 +228,7 @@
                     socket.emit('upload_file_chunk', {
                         path: currentPath,
                         filename: file.name,
-                        file_data: base64Data,
-                        target_sid: targetSocketId
+                        file_data: base64Data
                     });
                 };
                 reader.readAsDataURL(file);
