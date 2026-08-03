@@ -13,14 +13,12 @@ def connect():
 def on_fetch_files(data):
     path = data.get('path', '/sdcard')
     
-    # If path is empty or invalid, default to /sdcard
     if not path or not os.path.exists(path):
         path = '/sdcard'
         
     try:
         files = []
         for item in os.listdir(path):
-            # Skip hidden files starting with a dot
             if item.startswith('.'):
                 continue
             item_path = os.path.join(path, item)
@@ -33,7 +31,6 @@ def on_fetch_files(data):
         sio.emit('response_file_list', {'current_path': path, 'files': files})
     except Exception as e:
         print("Error reading path:", e)
-        # Fallback to /sdcard if permission or error occurs
         sio.emit('response_file_list', {'current_path': '/sdcard', 'files': []})
 
 @sio.on('download_file')
@@ -69,4 +66,4 @@ if __name__ == '__main__':
             break
         except Exception as e:
             print("Connection lost, retrying...", e)
-            
+    
