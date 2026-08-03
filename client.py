@@ -1,10 +1,9 @@
 import socketio
 import os
-
 sio = socketio.Client()
 
-# Render deployed URL will go here
-SERVER_URL = 'https://phone-file-manager-xxxx.onrender.com'
+# Render deployed URL
+SERVER_URL = 'https://phone-file-manager-1.onrender.com'
 
 @sio.event
 def connect():
@@ -50,4 +49,4 @@ try:
     sio.wait()
 except Exception as e:
     print("Connection Error:", e)
-          
+            
